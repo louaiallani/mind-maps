@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Mind Map</title>
+    <!-- Add Supabase JavaScript SDK with correct version -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        
+        #canvas.dragging {
+            cursor: grabbing;
+        }
+        
+        .node {
+            position: absolute;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 100px;
+        }
+        
+        .node-primary {
+            background-color: #3d415c;
+        }
+        
+        .node-secondary {
+            background-color: #3d5c54;
+        }
+        
+        .node-tertiary {
+            background-color: #345c3d;
+        }
+        
+        .connection-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .connection {
+            stroke: #666;
+            stroke-width: 2px;
+            fill: none;
+        }
+        
+        .add-button {
+            display: none;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            text-align: center;
+            margin-left: 10px;
+            line-height: 18px;
+            font-size: 16px;
+        }
+        
+        .node:hover .add-button {
+            display: block;
+        }
+        
+        .context-menu {
+            position: absolute;
+            background-color: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            padding: 5px 0;
+            z-index: 100;
+            display: none;
+        }
+        
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        
+        .context-menu-item:hover {
+            background-color: #3d3d3d;
+        }
+        
+        .input-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            padding: 20px;
+            z-index: 200;
+            display: none;
+        }
+        
+        .input-dialog input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            background-color: #3d3d3d;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+        }
+        
+        .input-dialog button {
+            padding: 8px 15px;
+            margin-right: 10px;
+            background-color: #3d5c54;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .add-root-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: #3d415c;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        
+        .add-root-button:hover {
+            transform: scale(1.1);
+            background-color: #4d5172;
+        }
+        
+        .color-picker-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            padding: 20px;
+            z-index: 200;
+            display: none;
+        }
+        
+        .color-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+        
+        .color-picker-dialog button {
+            padding: 8px 15px;
+            margin-right: 10px;
+            background-color: #3d5c54;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .action-buttons {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .action-button {
+            width: 40px;
+            height: 40px;
+            background-color: #3d5c54;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .action-button:hover {
+            transform: scale(1.1);
+            background-color: #4d726a;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background-color: #2d2d2d;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            bottom: 45px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        
+        .action-button:hover .tooltip {
+            opacity: 1;
+        }
+        
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #3d5c54;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 300;
+        }
+        
+        .toast-notification.show {
+            opacity: 1;
+        }
+
+        /* Collapse button style */
+        .collapse-button {
+            width: 18px;
+            height: 18px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            text-align: center;
+            margin-left: 10px;
+            line-height: 16px;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .collapse-button:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        /* Export options menu - updated for click instead of hover */
+        .export-options {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            padding: 0;
+            display: none;
+            flex-direction: column;
+            z-index: 100;
+            min-width: 120px;
+        }
+        
+        .export-options.show {
+            display: flex;
+        }
+        
+        .export-option {
+            padding: 8px 15px;
+            cursor: pointer;
+            color: #fff;
+            text-align: center;
+        }
+        
+        .export-option:hover {
+            background-color: #3d3d3d;
+        }
+        
+        /* Import file input */
+        .import-file-input {
+            display: none;
+        }
+
+        /* Zoom controls */
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+            z-index: 100;
+        }
+        
+        .zoom-button {
+            width: 36px;
+            height: 36px;
+            background-color: #3d5c54;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .zoom-button:hover {
+            transform: scale(1.1);
+            background-color: #4d726a;
+        }
+        
+        .zoom-level {
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+        .session-controls {
+             position: fixed;
+             top: 20px;
+             right: 20px;
+             display: flex;
+             gap: 10px;
+             z-index: 100;
+}
+        /* Image node style */
+        .image-node {
+            position: absolute;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            user-select: none;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            max-width: 200px;
+            max-height: 200px;
+            overflow: hidden;
+        }
+        
+        .image-node img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        /* Image upload button */
+        .image-upload-button {
+            position: fixed;
+            bottom: 20px;
+            right: 80px; /* Position to the left of add-root-button */
+            width: 50px;
+            height: 50px;
+            background-color: #5c3d5c;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        
+        .image-upload-button:hover {
+            transform: scale(1.1);
+            background-color: #6d4d6d;
+        }
+        
+        /* Image upload input */
+        .image-upload-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas"></div>
+    
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" id="addChildNode">Add Child Node</div>
+        <div class="context-menu-item" id="editNode">Edit Node</div>
+        <div class="context-menu-item" id="changeNodeColor">Change Color</div>
+        <div class="context-menu-item" id="deleteAllChildren">Delete All Children</div>
+        <div class="context-menu-item" id="deleteNode">Delete Node</div>
+    </div>
+    
+    <div class="input-dialog" id="inputDialog">
+        <input type="text" id="nodeNameInput" placeholder="Node name">
+        <button id="saveNodeBtn">Save</button>
+        <button id="cancelNodeBtn">Cancel</button>
+    </div>
+    
+    <div class="color-picker-dialog" id="colorPickerDialog">
+        <div class="color-options">
+            <div class="color-option" style="background-color: #3d415c;" data-color="#3d415c"></div>
+            <div class="color-option" style="background-color: #3d5c54;" data-color="#3d5c54"></div>
+            <div class="color-option" style="background-color: #345c3d;" data-color="#345c3d"></div>
+            <div class="color-option" style="background-color: #5c3d3d;" data-color="#5c3d3d"></div>
+            <div class="color-option" style="background-color: #5c3d5c;" data-color="#5c3d5c"></div>
+            <div class="color-option" style="background-color: #5c543d;" data-color="#5c543d"></div>
+        </div>
+        <button id="cancelColorBtn">Cancel</button>
+    </div>
+    
+    <div class="add-root-button" id="addRootBtn">+</div>
+    <div class="image-upload-button" id="imageUploadBtn">🖼️</div>
+    <input type="file" id="imageUploadInput" class="image-upload-input" accept="image/*">
+    
+    <div class="action-buttons">
+        <div class="action-button" id="importJsonBtn">
+            📂
+            <span class="tooltip">Import JSON</span>
+            <input type="file" id="importJsonInput" class="import-file-input" accept=".json">
+        </div>
+        <div class="action-button" id="exportBtn">
+            💾
+            <span class="tooltip">Export</span>
+        </div>
+        <div class="export-options" id="exportOptions">
+            <div class="export-option" data-format="json">JSON File</div>
+            <div class="export-option" data-format="png">PNG Image</div>
+            <div class="export-option" data-format="jpeg">JPEG Image</div>
+            <div class="export-option" data-format="svg">SVG Vector</div>
+            <div class="export-option" data-format="pdf">PDF Document</div>
+        </div>
+        <div class="action-button" id="saveToCloudBtn">
+            ☁️
+            <span class="tooltip">Save to Cloud</span>
+        </div>
+    </div>
+    
+    <div class="toast-notification" id="toastNotification"></div>
+
+    <div class="zoom-controls">
+        <div class="zoom-button" id="zoomOutBtn">−</div>
+        <div class="zoom-level" id="zoomLevelDisplay">100%</div>
+        <div class="zoom-button" id="zoomInBtn">+</div>
+        <div class="zoom-button" id="resetZoomBtn">↺</div>
+    </div>
+
+    <script>
+        // Core data structure
+        const mindMap = {
+            nodes: {},
+            connections: [],
+            images: {},
+            nextId: 0,
+            nextImageId: 0
+        };
+        
+        // Constants
+        const NODE_LEVELS = {
+            1: 'node-primary',
+            2: 'node-secondary',
+            3: 'node-tertiary'
+        };
+        
+        // DOM elements
+        const canvas = document.getElementById('canvas');
+        const contextMenu = document.getElementById('contextMenu');
+        const inputDialog = document.getElementById('inputDialog');
+        const nodeNameInput = document.getElementById('nodeNameInput');
+        const colorPickerDialog = document.getElementById('colorPickerDialog');
+        
+        // State variables
+        let draggedNode = null;
+        let offsetX = 0;
+        let offsetY = 0;
+        let contextNode = null;
+        let editingNode = null;
+        let isAddingChild = false;
+        let coloringNode = null;
+        
+        // Canvas dragging and zooming variables
+        let canvasDragging = false;
+        let canvasStartX = 0;
+        let canvasStartY = 0;
+        let canvasOffsetX = 0;
+        let canvasOffsetY = 0;
+        let zoomLevel = 1;
+        const zoomStep = 0.1;
+        const minZoom = 0.3;
+        const maxZoom = 3;
+        
+        // Initialize the mind map
+        function initializeMindMap() {
+            // Create root node
+            createNode('Start by renaming this node (right click)', window.innerWidth / 2 - 50, window.innerHeight / 2 - 20, null, 1);
+            
+            // Initialize canvas transform
+            canvasOffsetX = 0;
+            canvasOffsetY = 0;
+            zoomLevel = 1;
+            updateCanvasTransform();
+            
+            render();
+        }
+        
+        // Create a new node - updated to include collapsed state
+        function createNode(text, x, y, parentId, level) {
+            const id = 'node-' + mindMap.nextId++;
+            mindMap.nodes[id] = {
+                id,
+                text,
+                x,
+                y,
+                parentId,
+                level,
+                children: [],
+                collapsed: false,
+                hidden: false
+            };
+            
+            if (parentId) {
+                mindMap.nodes[parentId].children.push(id);
+                // Add connection
+                mindMap.connections.push({
+                    from: parentId,
+                    to: id
+                });
+            }
+            
+            return id;
+        }
+        
+        // Create a new image node
+        function createImageNode(imageUrl, x, y) {
+            const id = 'image-' + mindMap.nextImageId++;
+            mindMap.images[id] = {
+                id,
+                src: imageUrl,
+                x,
+                y
+            };
+            
+            return id;
+        }
+        
+        // Render the mind map - updated to handle hidden nodes and images
+        function render() {
+            // Clear canvas
+            canvas.innerHTML = '';
+            
+            // Create a container for nodes that will be transformed
+            const nodesContainer = document.createElement('div');
+            nodesContainer.id = 'nodesContainer';
+            nodesContainer.style.position = 'absolute';
+            nodesContainer.style.width = '100%';
+            nodesContainer.style.height = '100%';
+            nodesContainer.style.transformOrigin = 'top left';
+            canvas.appendChild(nodesContainer);
+            
+            // Apply current transform
+            updateCanvasTransform();
+            
+            // Create SVG container for connections
+            const svgContainer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svgContainer.setAttribute("class", "connection-container");
+            svgContainer.setAttribute("width", "100%");
+            svgContainer.setAttribute("height", "100%");
+            nodesContainer.appendChild(svgContainer);
+            
+            // Render visible connections with curved lines
+            mindMap.connections.forEach(conn => {
+                const fromNode = mindMap.nodes[conn.from] || mindMap.images[conn.from];
+                const toNode = mindMap.nodes[conn.to] || mindMap.images[conn.to];
+                
+                if (fromNode && toNode && !toNode.hidden) {
+                    renderConnection(svgContainer, conn.from, conn.to);
+                }
+            });
+            
+            // Render nodes
+            Object.values(mindMap.nodes).forEach(node => {
+                if (!node.hidden) {
+                    renderNode(node, nodesContainer);
+                }
+            });
+            
+            // Render images
+            Object.values(mindMap.images).forEach(image => {
+                renderImageNode(image, nodesContainer);
+            });
+            
+            // Add event listeners for panning
+            canvas.addEventListener('mousedown', startCanvasDrag);
+            document.addEventListener('mousemove', dragCanvas);
+            document.addEventListener('mouseup', stopCanvasDrag);
+        }
+        
+        // Render a node - updated to include collapse button
+        function renderNode(node, container) {
+            const nodeElement = document.createElement('div');
+            nodeElement.id = node.id;
+            nodeElement.className = `node ${NODE_LEVELS[node.level] || 'node-primary'}`;
+            nodeElement.style.left = `${node.x}px`;
+            nodeElement.style.top = `${node.y}px`;
+            
+            // Apply custom color if available
+            if (node.color) {
+                nodeElement.style.backgroundColor = node.color;
+            }
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = node.text;
+            nodeElement.appendChild(textSpan);
+            
+            // Button container for better layout
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.display = 'flex';
+            buttonContainer.style.alignItems = 'center';
+            
+            // Add collapse button if the node has children
+            if (node.children && node.children.length > 0) {
+                const collapseButton = document.createElement('div');
+                collapseButton.className = 'collapse-button';
+                collapseButton.textContent = node.collapsed ? '+' : '−';  // Using minus sign for expanded
+                collapseButton.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleCollapseNode(node.id);
+                };
+                buttonContainer.appendChild(collapseButton);
+            }
+            
+            const addButton = document.createElement('div');
+            addButton.className = 'add-button';
+            addButton.textContent = '+';
+            addButton.onclick = (e) => {
+                e.stopPropagation();
+                showInputDialog(node.id, true);
+            };
+            buttonContainer.appendChild(addButton);
+            
+            nodeElement.appendChild(buttonContainer);
+            
+            // Event listeners
+            nodeElement.addEventListener('mousedown', startDrag);
+            nodeElement.addEventListener('contextmenu', showContextMenu);
+            
+            container.appendChild(nodeElement);
+        }
+        
+        // Render an image node
+        function renderImageNode(imageData, container) {
+            const imageElement = document.createElement('div');
+            imageElement.id = imageData.id;
+            imageElement.className = 'image-node';
+            imageElement.style.left = `${imageData.x}px`;
+            imageElement.style.top = `${imageData.y}px`;
+            
+            const img = document.createElement('img');
+            img.src = imageData.src;
+            img.onload = () => {
+                // Calculate aspect ratio to set width/height
+                const aspectRatio = img.naturalWidth / img.naturalHeight;
+                const maxSize = 200; // Max width or height
+                
+                if (aspectRatio >= 1) { // Wider than tall
+                    img.style.width = `${Math.min(maxSize, img.naturalWidth)}px`;
+                    img.style.height = 'auto';
+                } else { // Taller than wide
+                    img.style.height = `${Math.min(maxSize, img.naturalHeight)}px`;
+                    img.style.width = 'auto';
+                }
+            };
+            
+            imageElement.appendChild(img);
+            
+            // Event listeners
+            imageElement.addEventListener('mousedown', startDrag);
+            imageElement.addEventListener('contextmenu', showContextMenu);
+            
+            container.appendChild(imageElement);
+        }
+        
+        // Toggle collapse state for a node
+        function toggleCollapseNode(nodeId) {
+            const node = mindMap.nodes[nodeId];
+            if (!node) return;
+            
+            // Toggle collapsed state
+            node.collapsed = !node.collapsed;
+            
+            // Update visibility of all descendants recursively
+            const updateDescendants = (parentId, isHidden) => {
+                const parent = mindMap.nodes[parentId];
+                if (!parent) return;
+                
+                parent.children.forEach(childId => {
+                    const child = mindMap.nodes[childId];
+                    if (child) {
+                        child.hidden = isHidden;
+                        // If parent is collapsed, all descendants are hidden
+                        // If parent is expanded but a child is collapsed, that child's descendants remain hidden
+                        updateDescendants(childId, isHidden || child.collapsed);
+                    }
+                });
+            };
+            
+            updateDescendants(nodeId, node.collapsed);
+            
+            render();
+        }
+        
+        // Render a connection between two nodes with curved SVG path
+        function renderConnection(svgContainer, fromId, toId) {
+            const fromIsNode = fromId.startsWith('node-');
+            const toIsNode = toId.startsWith('node-');
+            
+            const fromElement = fromIsNode ? mindMap.nodes[fromId] : mindMap.images[fromId];
+            const toElement = toIsNode ? mindMap.nodes[toId] : mindMap.images[toId];
+            
+            if (!fromElement || !toElement) return;
+            
+            // Calculate center points
+            let fromX, fromY, toX, toY;
+            
+            if (fromIsNode) {
+                fromX = fromElement.x + 70; // Approximate node center
+                fromY = fromElement.y + 15;
+            } else {
+                fromX = fromElement.x + 100; // Approximate image center
+                fromY = fromElement.y + 100;
+            }
+            
+            if (toIsNode) {
+                toX = toElement.x + 70; // Approximate node center
+                toY = toElement.y + 15;
+            } else {
+                toX = toElement.x + 100; // Approximate image center
+                toY = toElement.y + 100;
+            }
+            
+            // Create curved path with Bezier curve
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            
+            // Control points
+            const controlPointX1 = fromX + (toX - fromX) / 2;
+            const controlPointY1 = fromY;
+            const controlPointX2 = controlPointX1;
+            const controlPointY2 = toY;
+            
+            // Set path
+            path.setAttribute("d", `M ${fromX},${fromY} C ${controlPointX1},${controlPointY1} ${controlPointX2},${controlPointY2} ${toX},${toY}`);
+            path.setAttribute("class", "connection");
+            
+            svgContainer.appendChild(path);
+        }
+        
+        // Start dragging a node or image
+        function startDrag(e) {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent canvas drag when dragging a node
+            
+            draggedNode = e.currentTarget;
+            const rect = draggedNode.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+        
+        // Drag a node or image - updated for curved connections
+        function drag(e) {
+            if (!draggedNode) return;
+            
+            const x = (e.clientX - offsetX) / zoomLevel - canvasOffsetX / zoomLevel;
+            const y = (e.clientY - offsetY) / zoomLevel - canvasOffsetY / zoomLevel;
+            
+            draggedNode.style.left = `${x}px`;
+            draggedNode.style.top = `${y}px`;
+            
+            const nodeId = draggedNode.id;
+            
+            if (nodeId.startsWith('node-')) {
+                mindMap.nodes[nodeId].x = x;
+                mindMap.nodes[nodeId].y = y;
+            } else if (nodeId.startsWith('image-')) {
+                mindMap.images[nodeId].x = x;
+                mindMap.images[nodeId].y = y;
+            }
+            
+            // Update all connections by re-rendering
+            render();
+        }
+        
+        // Stop dragging a node or image
+        function stopDrag() {
+            draggedNode = null;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+        
+        // Start canvas dragging
+        function startCanvasDrag(e) {
+            // Only allow dragging when clicking directly on the canvas (not on nodes)
+            if (e.target === canvas || e.target.tagName === 'svg') {
+                canvasDragging = true;
+                canvasStartX = e.clientX - canvasOffsetX;
+                canvasStartY = e.clientY - canvasOffsetY;
+                canvas.classList.add('dragging');
+            }
+        }
+        
+        // Drag the canvas
+        function dragCanvas(e) {
+            if (!canvasDragging) return;
+            
+            canvasOffsetX = e.clientX - canvasStartX;
+            canvasOffsetY = e.clientY - canvasStartY;
+            updateCanvasTransform();
+        }
+        
+        // Stop canvas dragging
+        function stopCanvasDrag() {
+            canvasDragging = false;
+            canvas.classList.remove('dragging');
+        }
+        
+        // Update canvas transform
+        function updateCanvasTransform() {
+            const nodesContainer = document.getElementById('nodesContainer');
+            if (nodesContainer) {
+                nodesContainer.style.transform = `translate(${canvasOffsetX}px, ${canvasOffsetY}px) scale(${zoomLevel})`;
+                document.getElementById('zoomLevelDisplay').textContent = `${Math.round(zoomLevel * 100)}%`;
+            }
+        }
+        
+        // Zoom in function
+        function zoomIn() {
+            if (zoomLevel < maxZoom) {
+                zoomLevel = Math.min(zoomLevel + zoomStep, maxZoom);
+                updateCanvasTransform();
+            }
+        }
+        
+        // Zoom out function
+        function zoomOut() {
+            if (zoomLevel > minZoom) {
+                zoomLevel = Math.max(zoomLevel - zoomStep, minZoom);
+                updateCanvasTransform();
+            }
+        }
+        
+        // Reset zoom and position
+        function resetZoom() {
+            zoomLevel = 1;
+            canvasOffsetX = 0;
+            canvasOffsetY = 0;
+            updateCanvasTransform();
+        }
+        
+        // Show context menu
+        function showContextMenu(e) {
+            e.preventDefault();
+            contextNode = e.currentTarget.id;
+            
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = `${e.clientX}px`;
+            contextMenu.style.top = `${e.clientY}px`;
+            
+            document.addEventListener('click', hideContextMenu);
+        }
+        
+        // Hide context menu
+        function hideContextMenu() {
+            contextMenu.style.display = 'none';
+            document.removeEventListener('click', hideContextMenu);
+        }
+        
+        // Show input dialog
+        function showInputDialog(nodeId, isAdding = false) {
+            editingNode = nodeId;
+            isAddingChild = isAdding;
+            
+            if (nodeId === null) {
+                // Creating a new root
+                nodeNameInput.value = '';
+                nodeNameInput.placeholder = "New Root Node";
+            } else if (!isAdding) {
+                nodeNameInput.value = mindMap.nodes[nodeId].text;
+                nodeNameInput.placeholder = "Node name";
+            } else {
+                nodeNameInput.value = '';
+                nodeNameInput.placeholder = "Node name";
+            }
+            
+            inputDialog.style.display = 'block';
+            nodeNameInput.focus();
+        }
+        
+        // Hide input dialog
+        function hideInputDialog() {
+            inputDialog.style.display = 'none';
+            editingNode = null;
+        }
+        
+        // Save node
+        function saveNode() {
+            const text = nodeNameInput.value.trim();
+            if (!text) return;
+            
+            if (editingNode === null) {
+                // Creating a new root node
+                const x = Math.random() * (window.innerWidth - 200) + 100;
+                const y = Math.random() * (window.innerHeight - 200) + 100;
+                createNode(text, x, y, null, 1);
+            } else if (isAddingChild) {
+                const parentNode = mindMap.nodes[editingNode];
+                const level = Math.min(parentNode.level + 1, 3);
+                
+                // Calculate position for new node
+                const x = parentNode.x + 150;
+                const y = parentNode.y + (parentNode.children.length * 40);
+                
+                createNode(text, x, y, editingNode, level);
+            } else {
+                mindMap.nodes[editingNode].text = text;
+            }
+            
+            hideInputDialog();
+            render();
+        }
+        
+        // Delete node - updated to handle collapsed state
+        function deleteNode(nodeId) {
+            const node = mindMap.nodes[nodeId];
+            if (!node) return;
+            
+            // Delete all children recursively
+            const deleteChildren = (id) => {
+                const children = [...mindMap.nodes[id].children];
+                children.forEach(childId => {
+                    deleteChildren(childId);
+                });
+                
+                // Remove connections
+                mindMap.connections = mindMap.connections.filter(
+                    conn => conn.from !== id && conn.to !== id
+                );
+                
+                // Remove from parent's children array
+                if (mindMap.nodes[id].parentId) {
+                    const parentId = mindMap.nodes[id].parentId;
+                    if (mindMap.nodes[parentId]) {
+                        mindMap.nodes[parentId].children = mindMap.nodes[parentId].children.filter(
+                            childId => childId !== id
+                        );
+                    }
+                }
+                
+                // Delete node
+                delete mindMap.nodes[id];
+            };
+            
+            deleteChildren(nodeId);
+            render();
+        }
+        
+        // Delete all children of a node
+        function deleteAllChildren(nodeId) {
+            const node = mindMap.nodes[nodeId];
+            if (!node) return;
+            
+            // Copy the children array to avoid modification during iteration
+            const children = [...node.children];
+            
+            // Delete each child
+            children.forEach(childId => {
+                deleteNode(childId);
+            });
+            
+            // Clear the children array
+            node.children = [];
+            
+            render();
+        }
+        
+        // Show color picker dialog
+        function showColorPicker(nodeId) {
+            coloringNode = nodeId;
+            colorPickerDialog.style.display = 'block';
+        }
+        
+        // Hide color picker dialog
+        function hideColorPicker() {
+            colorPickerDialog.style.display = 'none';
+            coloringNode = null;
+        }
+        
+        // Set node color
+        function setNodeColor(color) {
+            if (!coloringNode) return;
+            
+            const node = mindMap.nodes[coloringNode];
+            if (!node) return;
+            
+            node.color = color;
+            
+            hideColorPicker();
+            render();
+        }
+        
+        // Download mind map as JSON - updated to include images
+        function downloadMindMapJson() {
+            const dataToExport = {
+                nodes: mindMap.nodes,
+                connections: mindMap.connections,
+                images: mindMap.images,
+                nextId: mindMap.nextId,
+                nextImageId: mindMap.nextImageId
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "mindmap.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+        
+        // Import JSON file - updated to handle images
+        function importMindMapJson(file) {
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    // Validate imported data has required structure
+                    if (!importedData.nodes || !importedData.connections) {
+                        throw new Error('Invalid mind map structure');
+                    }
+                    
+                    // Clear current mind map
+                    mindMap.nodes = {};
+                    mindMap.connections = [];
+                    mindMap.images = importedData.images || {};
+                    
+                    // Import nodes and connections
+                    mindMap.nodes = importedData.nodes;
+                    mindMap.connections = importedData.connections;
+                    mindMap.nextId = importedData.nextId || 0;
+                    mindMap.nextImageId = importedData.nextImageId || 0;
+                    
+                    // Make sure nextId is at least as large as the highest existing ID
+                    const nodeIds = Object.keys(mindMap.nodes)
+                        .map(id => parseInt(id.replace('node-', ''), 10))
+                        .filter(id => !isNaN(id));
+                    
+                    if (nodeIds.length > 0) {
+                        const maxId = Math.max(...nodeIds) + 1;
+                        mindMap.nextId = Math.max(mindMap.nextId, maxId);
+                    }
+                    
+                    render();
+                    showToast('Mind map imported successfully!');
+                } catch (error) {
+                    console.error('Failed to import mind map:', error);
+                    showToast('Failed to import mind map. Invalid file format.');
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+        
+        // Export mind map as image with specified format
+        function exportMindMapImage(format) {
+            // Hide buttons temporarily for clean screenshot
+            const addRootBtn = document.getElementById('addRootBtn');
+            const actionButtons = document.querySelector('.action-buttons');
+            const originalAddRootDisplay = addRootBtn.style.display;
+            const originalActionButtonsDisplay = actionButtons.style.display;
+            
+            addRootBtn.style.display = 'none';
+            actionButtons.style.display = 'none';
+            
+            // Use html2canvas library to capture the canvas
+            html2canvas(canvas).then(function(canvas) {
+                const link = document.createElement('a');
+                let imageData;
+                
+                switch (format) {
+                    case 'jpeg':
+                        imageData = canvas.toDataURL('image/jpeg', 0.9);
+                        link.download = 'mindmap.jpg';
+                        break;
+                    case 'svg':
+                        // Convert canvas to SVG
+                        const svgData = canvasToSVG(canvas);
+                        imageData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+                        link.download = 'mindmap.svg';
+                        break;
+                    case 'pdf':
+                        // Handle PDF export
+                        exportAsPDF(canvas);
+                        // Restore buttons early since we're using a different method to download
+                        addRootBtn.style.display = originalAddRootDisplay;
+                        actionButtons.style.display = originalActionButtonsDisplay;
+                        return;
+                    case 'png':
+                    default:
+                        imageData = canvas.toDataURL('image/png');
+                        link.download = 'mindmap.png';
+                        break;
+                }
+                
+                link.href = imageData;
+                link.click();
+                
+                // Restore buttons
+                addRootBtn.style.display = originalAddRootDisplay;
+                actionButtons.style.display = originalActionButtonsDisplay;
+            });
+        }
+        
+        // Convert canvas to SVG
+        function canvasToSVG(canvas) {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Create SVG root element
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+            
+            // Add background
+            svg += `<rect width="100%" height="100%" fill="#1e1e1e"/>`;
+            
+            // Add all nodes and connections as SVG elements
+            // First add connections
+            Object.values(mindMap.connections).forEach(conn => {
+                const fromNode = mindMap.nodes[conn.from];
+                const toNode = mindMap.nodes[conn.to];
+                
+                if (fromNode && toNode && !toNode.hidden) {
+                    const fromX = fromNode.x + 50;
+                    const fromY = fromNode.y + 15;
+                    const toX = toNode.x + 50;
+                    const toY = toNode.y + 15;
+                    
+                    const controlPointX1 = fromX + (toX - fromX) / 2;
+                    const controlPointY1 = fromY;
+                    const controlPointX2 = controlPointX1;
+                    const controlPointY2 = toY;
+                    
+                    svg += `<path d="M ${fromX},${fromY} C ${controlPointX1},${controlPointY1} ${controlPointX2},${controlPointY2} ${toX},${toY}" stroke="#666" stroke-width="2" fill="none"/>`;
+                }
+            });
+            
+            // Then add nodes
+            Object.values(mindMap.nodes).forEach(node => {
+                if (!node.hidden) {
+                    const bgColor = node.color || NODE_LEVELS[node.level] || '#3d415c';
+                    svg += `<rect x="${node.x}" y="${node.y}" width="140" height="30" rx="4" fill="${bgColor}"/>`;
+                    svg += `<text x="${node.x + 10}" y="${node.y + 20}" font-family="sans-serif" font-size="14" fill="white">${escapeXml(node.text)}</text>`;
+                }
+            });
+            
+            svg += '</svg>';
+            return svg;
+        }
+        
+        // Escape XML characters for SVG
+        function escapeXml(unsafe) {
+            return unsafe.replace(/[<>&'"]/g, c => {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+        
+        // Export as PDF
+        function exportAsPDF(canvas) {
+            // Use jsPDF library if available or add it dynamically
+            if (typeof jsPDF === 'undefined') {
+                // Load jsPDF library
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+                script.onload = function() {
+                    createAndDownloadPDF(canvas);
+                };
+                document.head.appendChild(script);
+            } else {
+                createAndDownloadPDF(canvas);
+            }
+        }
+        
+        // Create and download PDF
+        function createAndDownloadPDF(canvas) {
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jspdf.jsPDF({
+                orientation: 'landscape',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+            pdf.save('mindmap.pdf');
+        }
+        
+        // Initialize Supabase client correctly
+        const SUPABASE_URL = 'https://xhyynqxnfetdiuppfptn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoeXlucXhuZmV0ZGl1cHBmcHRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMwMTU5MjUsImV4cCI6MjA1ODU5MTkyNX0.baxMpbJJ9VIvUyfg27nZIfCsvwXgDagUF-aQ53LTW9Q';
+        
+        // Function to save mind map to Supabase - Ensure data matches table schema
+       // Function to save mind map to Supabase
+async function saveMindMapToSupabase() {
+    try {
+        // Generate a proper UUID for the session
+        const sessionId = crypto.randomUUID();
+        
+        const dataToInsert = [];
+        
+        // Add nodes
+        Object.values(mindMap.nodes).forEach(node => {
+            dataToInsert.push({
+                session_id: sessionId,
+                node_id: node.id,
+                text: node.text,
+                x: node.x,
+                y: node.y,
+                level: node.level,
+                parent_id: node.parentId,
+                color: node.color || null,
+                collapsed: node.collapsed || false,
+                is_connection: false,
+                from_node_id: null,
+                to_node_id: null,
+                is_image: false,
+                image_src: null
+            });
+        });
+        
+        // Add connections
+        mindMap.connections.forEach(conn => {
+            dataToInsert.push({
+                session_id: sessionId,
+                node_id: null,
+                text: null,
+                x: null,
+                y: null,
+                level: null,
+                parent_id: null,
+                color: null,
+                collapsed: false,
+                is_connection: true,
+                from_node_id: conn.from,
+                to_node_id: conn.to,
+                is_image: false,
+                image_src: null
+            });
+        });
+        
+        // Add images
+        Object.values(mindMap.images).forEach(image => {
+            dataToInsert.push({
+                session_id: sessionId,
+                node_id: image.id,
+                text: null,
+                x: image.x,
+                y: image.y,
+                level: null,
+                parent_id: null,
+                color: null,
+                collapsed: false,
+                is_connection: false,
+                from_node_id: null,
+                to_node_id: null,
+                is_image: true,
+                image_src: image.src
+            });
+        });
+        
+        // Send data to Supabase
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/mind_maps`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify(dataToInsert)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error: ${response.status} - ${errorText}`);
+        }
+        
+        // Store session ID in localStorage
+        localStorage.setItem('mindMapSessionId', sessionId);
+        
+        return sessionId;
+    } catch (error) {
+        console.error('Failed to save mind map:', error);
+        throw error;
+    }
+}
+                // Function to load a mind map from Supabase
+async function loadMindMapFromSession(sessionId) {
+    try {
+        // Show loading indicator
+        showToast('Loading mind map...');
+        
+        // Clear current mind map
+        mindMap.nodes = {};
+        mindMap.connections = [];
+        mindMap.images = {};
+        mindMap.nextId = 0;
+        mindMap.nextImageId = 0;
+        
+        // Fetch the data from Supabase
+        const response = await fetch(
+            `${SUPABASE_URL}/rest/v1/mind_maps?session_id=eq.${sessionId}`,
+            {
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            }
+        );
+        
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.length === 0) {
+            throw new Error('No mind map found with this session ID');
+        }
+        
+        // Process nodes
+        data.filter(item => !item.is_connection && !item.is_image).forEach(item => {
+            // Track highest node ID to set nextId properly
+            const nodeIdNum = parseInt(item.node_id.split('-')[1]);
+            mindMap.nextId = Math.max(mindMap.nextId, nodeIdNum + 1);
+            
+            // Create node
+            mindMap.nodes[item.node_id] = {
+                id: item.node_id,
+                text: item.text,
+                x: item.x,
+                y: item.y,
+                level: item.level,
+                parentId: item.parent_id,
+                color: item.color,
+                collapsed: item.collapsed || false,
+                hidden: false,
+                children: []
+            };
+        });
+        
+        // Process connections
+        data.filter(item => item.is_connection).forEach(item => {
+            // Add to connections array
+            mindMap.connections.push({
+                from: item.from_node_id,
+                to: item.to_node_id
+            });
+            
+            // Update parent-child relationship if this is a parent-child connection
+            const toNode = mindMap.nodes[item.to_node_id];
+            const fromNode = mindMap.nodes[item.from_node_id];
+            
+            if (toNode && fromNode && toNode.parentId === item.from_node_id) {
+                if (!fromNode.children.includes(item.to_node_id)) {
+                    fromNode.children.push(item.to_node_id);
+                }
+            }
+        });
+        
+        // Process images
+        data.filter(item => item.is_image).forEach(item => {
+            // Track highest image ID
+            const imageIdNum = parseInt(item.node_id.split('-')[1]);
+            mindMap.nextImageId = Math.max(mindMap.nextImageId, imageIdNum + 1);
+            
+            // Create image
+            mindMap.images[item.node_id] = {
+                id: item.node_id,
+                src: item.image_src,
+                x: item.x,
+                y: item.y
+            };
+        });
+        
+        // Update hidden states based on collapsed nodes
+        Object.values(mindMap.nodes).forEach(node => {
+            if (node.collapsed) {
+                updateDescendantVisibility(node.id, true);
+            }
+        });
+        
+        // Save the session ID for future use
+        localStorage.setItem('mindMapSessionId', sessionId);
+        
+        // Render the map with proper positioning
+        render();
+        
+        showToast('Mind map loaded successfully!');
+        return true;
+    } catch (error) {
+        console.error('Failed to load mind map:', error);
+        showToast('Error: ' + error.message);
+        return false;
+    }
+}
+
+// Helper function to update visibility of descendants
+function updateDescendantVisibility(nodeId, isHidden) {
+    const node = mindMap.nodes[nodeId];
+    if (!node) return;
+    
+    node.children.forEach(childId => {
+        const child = mindMap.nodes[childId];
+        if (child) {
+            child.hidden = isHidden;
+            // Recursively update descendants
+            updateDescendantVisibility(childId, isHidden || child.collapsed);
+        }
+    });
+}
+        
+        // Function to show toast notification
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toastNotification');
+            toast.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, duration);
+        }
+        
+       // Handle save to cloud with better error handling
+async function handleSaveToCloud() {
+    try {
+        // Show saving indicator
+        showToast('Saving to cloud...');
+        
+        const sessionId = await saveMindMapToSupabase();
+        
+        // Copy session ID to clipboard and show success message
+        if (navigator.clipboard) {
+            try {
+                await navigator.clipboard.writeText(sessionId);
+                showToast('Saved! Session ID copied to clipboard: ' + sessionId);
+            } catch (clipboardError) {
+                showToast('Saved! Your session ID: ' + sessionId);
+            }
+        } else {
+            showToast('Saved! Your session ID: ' + sessionId);
+        }
+    } catch (error) {
+        console.error("Error in handleSaveToCloud:", error);
+        showToast('Failed to save: ' + error.message);
+    }
+}
+        
+        // Handle image upload
+        function handleImageUpload(file) {
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Create a new image node at the center of the viewport
+                const imageUrl = e.target.result;
+                
+                // Calculate center position considering current scroll and zoom
+                const viewportCenterX = window.innerWidth / 2 - canvasOffsetX / zoomLevel;
+                const viewportCenterY = window.innerHeight / 2 - canvasOffsetY / zoomLevel;
+                
+                const imageId = createImageNode(imageUrl, viewportCenterX - 100, viewportCenterY - 100);
+                
+                render();
+                showToast('Image added successfully!');
+            };
+            
+            reader.readAsDataURL(file);
+        }
+        
+        // Add connection between nodes/images
+        function addConnection(fromId, toId) {
+            // Check if connection already exists
+            const connectionExists = mindMap.connections.some(
+                conn => (conn.from === fromId && conn.to === toId) || 
+                        (conn.from === toId && conn.to === fromId)
+            );
+            
+            if (!connectionExists) {
+                mindMap.connections.push({
+                    from: fromId,
+                    to: toId
+                });
+                
+                render();
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // Add context menu items for connecting nodes
+        document.getElementById('contextMenu').insertAdjacentHTML(
+            'beforeend', 
+            '<div class="context-menu-item" id="connectToNodeBtn">Connect to Node</div>'
+        );
+        
+        // Create a connection from the currently selected node to another
+        let connectingFrom = null; // Store the node id we're connecting from
+        
+        document.getElementById('connectToNodeBtn').addEventListener('click', () => {
+            if (contextNode) {
+                connectingFrom = contextNode;
+                showToast('Click on another node or image to create a connection');
+                
+                // Add one-time click handler for the next node clicked
+                const connectHandler = function(e) {
+                    const clickedElement = e.target.closest('.node, .image-node');
+                    if (clickedElement && clickedElement.id !== connectingFrom) {
+                        // Create connection
+                        if (addConnection(connectingFrom, clickedElement.id)) {
+                            showToast('Connection created!');
+                        } else {
+                            showToast('Connection already exists');
+                        }
+                        
+                        // Reset connecting state
+                        connectingFrom = null;
+                        document.removeEventListener('click', connectHandler);
+                    }
+                };
+                
+                document.addEventListener('click', connectHandler);
+            }
+        });
+        
+        // Handle export based on format
+        function handleExport(format) {
+            if (format === 'json') {
+                downloadMindMapJson();
+            } else {
+                exportMindMapImage(format);
+            }
+            
+            // Hide the export options menu
+            document.getElementById('exportOptions').classList.remove('show');
+        }
+        
+        // Initialize
+        function initializeApp() {
+            initializeMindMap();
+            
+            // Add html2canvas script for image export
+            const html2canvasScript = document.createElement('script');
+            html2canvasScript.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
+            document.head.appendChild(html2canvasScript);
+            
+            // Add zoom control event listeners
+            document.getElementById('zoomInBtn').addEventListener('click', zoomIn);
+            document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
+            document.getElementById('resetZoomBtn').addEventListener('click', resetZoom);
+            
+            // Add wheel zoom support
+            canvas.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                
+                if (e.deltaY < 0) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            });
+        }
+        
+        // Event listeners
+        document.getElementById('addChildNode').addEventListener('click', () => {
+            if (contextNode) {
+                showInputDialog(contextNode, true);
+            }
+        });
+        
+        document.getElementById('editNode').addEventListener('click', () => {
+            if (contextNode) {
+                showInputDialog(contextNode, false);
+            }
+        });
+        
+        document.getElementById('changeNodeColor').addEventListener('click', () => {
+            if (contextNode) {
+                showColorPicker(contextNode);
+            }
+        });
+        
+        document.getElementById('deleteAllChildren').addEventListener('click', () => {
+            if (contextNode) {
+                deleteAllChildren(contextNode);
+            }
+        });
+        
+        document.getElementById('deleteNode').addEventListener('click', () => {
+            if (contextNode) {
+                deleteNode(contextNode);
+            }
+        });
+        
+        document.getElementById('saveNodeBtn').addEventListener('click', saveNode);
+        document.getElementById('cancelNodeBtn').addEventListener('click', hideInputDialog);
+        document.getElementById('addRootBtn').addEventListener('click', addRootNode);
+        document.getElementById('cancelColorBtn').addEventListener('click', hideColorPicker);
+        document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
+        
+        // Add color picker events
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', () => {
+                setNodeColor(option.getAttribute('data-color'));
+            });
+        });
+        
+        // Add context menu item for collapsing/expanding
+        document.getElementById('contextMenu').insertAdjacentHTML(
+            'beforeend', 
+            '<div class="context-menu-item" id="toggleCollapseNode">Toggle Collapse</div>'
+        );
+        
+        document.getElementById('toggleCollapseNode').addEventListener('click', () => {
+            if (contextNode) {
+                toggleCollapseNode(contextNode);
+            }
+        });
+        
+        // Event listeners for new features
+        document.getElementById('importJsonBtn').addEventListener('click', function() {
+            document.getElementById('importJsonInput').click();
+        });
+        
+        document.getElementById('importJsonInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                importMindMapJson(e.target.files[0]);
+                // Reset the file input so the same file can be imported again if needed
+                e.target.value = '';
+            }
+        });
+        
+        // Update export button to use click instead of hover
+        document.getElementById('exportBtn').addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent immediate closing of menu
+            toggleExportOptions();
+        });
+        
+        document.querySelectorAll('.export-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                const format = e.target.getAttribute('data-format');
+                handleExport(format);
+            });
+        });
+        
+        // Toggle export options menu
+        function toggleExportOptions() {
+            const exportOptions = document.getElementById('exportOptions');
+            exportOptions.classList.toggle('show');
+            
+            // Add a click event listener to the document to close the menu when clicking outside
+            if (exportOptions.classList.contains('show')) {
+                setTimeout(() => {
+                    document.addEventListener('click', closeExportOptionsOnClickOutside);
+                }, 0);
+            }
+        }
+        
+        // Close export options when clicking outside
+        function closeExportOptionsOnClickOutside(e) {
+            const exportOptions = document.getElementById('exportOptions');
+            const exportBtn = document.getElementById('exportBtn');
+            
+            if (!exportOptions.contains(e.target) && e.target !== exportBtn) {
+                exportOptions.classList.remove('show');
+                document.removeEventListener('click', closeExportOptionsOnClickOutside);
+            }
+        }
+        
+        // Function to add a new root node
+        function addRootNode() {
+            editingNode = null;
+            isAddingChild = false;
+            showInputDialog(null);
+        }
+        
+        // Show session dialog
+        function showSessionDialog() {
+            const sessionDialog = document.getElementById('sessionDialog');
+            sessionDialog.style.display = 'block';
+            
+            // Pre-fill with last used session ID if available
+            const savedSessionId = localStorage.getItem('mindMapSessionId');
+            if (savedSessionId) {
+                document.getElementById('sessionIdInput').value = savedSessionId;
+            }
+            
+            document.getElementById('sessionIdInput').focus();
+        }
+
+        // Hide session dialog
+        function hideSessionDialog() {
+            document.getElementById('sessionDialog').style.display = 'none';
+        }
+
+        // Handle loading from session ID
+        async function handleLoadSession() {
+            const sessionId = document.getElementById('sessionIdInput').value.trim();
+            
+            if (!sessionId) {
+                showToast('Please enter a valid session ID');
+                return;
+            }
+            
+            hideSessionDialog();
+            await loadMindMapFromSession(sessionId);
+        }
+        
+        // Update event listeners
+        document.getElementById('imageUploadBtn').addEventListener('click', function() {
+            document.getElementById('imageUploadInput').click();
+        });
+        
+        document.getElementById('imageUploadInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                handleImageUpload(e.target.files[0]);
+                // Reset the input so the same file can be uploaded again
+                e.target.value = '';
+            }
+        });
+        
+        // Add session dialog event listeners
+        document.getElementById('loadSessionBtn').addEventListener('click', showSessionDialog);
+        document.getElementById('cancelSessionBtn').addEventListener('click', hideSessionDialog);
+        document.getElementById('sessionDialog').querySelector('#loadSessionBtn').addEventListener('click', handleLoadSession);
+        
+        // Check for a previous session on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedSessionId = localStorage.getItem('mindMapSessionId');
+            if (savedSessionId) {
+                const shouldLoad = confirm('A saved mind map session was found. Would you like to load it?');
+                if (shouldLoad) {
+                    loadMindMapFromSession(savedSessionId);
+                }
+            }
+        });
+        
+        initializeApp();
+    </script>
+
+
+<!-- Session dialog -->
+<div class="input-dialog" id="sessionDialog">
+    <input type="text" id="sessionIdInput" placeholder="Enter session ID">
+    <button id="loadSessionBtn">Load</button>
+    <button id="cancelSessionBtn">Cancel</button>
+</div>
+
+<!-- Session controls -->
+<div class="session-controls">
+    <div class="action-button" id="loadSessionBtn">
+        📂
+        <span class="tooltip">Load Session</span>
+    </div>
+</div>
+    
+</body>
+</html>
