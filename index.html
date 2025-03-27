@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Mind Map</title>
-    <!-- Add Supabase JavaScript SDK with correct version -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         body {
             margin: 0;
@@ -374,7 +372,7 @@
              display: flex;
              gap: 10px;
              z-index: 100;
-}
+        }
         /* Image node style */
         .image-node {
             position: absolute;
@@ -423,6 +421,79 @@
         .image-upload-input {
             display: none;
         }
+
+        /* Drawing tools panel */
+        .drawing-tools {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .drawing-tool {
+            width: 40px;
+            height: 40px;
+            background-color: #3d5c54;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .drawing-tool:hover {
+            transform: scale(1.1);
+            background-color: #4d726a;
+        }
+        
+        .drawing-tool.active {
+            background-color: #5c3d3d;
+        }
+        
+        /* Drawing canvas */
+        #drawingCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        /* Color picker for drawing */
+        .draw-color-picker {
+            position: absolute;
+            top: 50px;
+            left: 70px;
+            background-color: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            padding: 10px;
+            display: none;
+            flex-wrap: wrap;
+            gap: 5px;
+            z-index: 250;
+        }
+        
+        .draw-color {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .draw-color:hover {
+            transform: scale(1.2);
+        }
     </style>
 </head>
 <body>
@@ -434,6 +505,8 @@
         <div class="context-menu-item" id="changeNodeColor">Change Color</div>
         <div class="context-menu-item" id="deleteAllChildren">Delete All Children</div>
         <div class="context-menu-item" id="deleteNode">Delete Node</div>
+        <div class="context-menu-item" id="connectToNodeBtn">Connect to Node</div>
+        <div class="context-menu-item" id="toggleCollapseNode">Toggle Collapse</div>
     </div>
     
     <div class="input-dialog" id="inputDialog">
@@ -468,16 +541,16 @@
             💾
             <span class="tooltip">Export</span>
         </div>
+        <div class="action-button" id="saveLocalBtn">
+            🛟
+            <span class="tooltip">Save Locally</span>
+        </div>
         <div class="export-options" id="exportOptions">
             <div class="export-option" data-format="json">JSON File</div>
             <div class="export-option" data-format="png">PNG Image</div>
             <div class="export-option" data-format="jpeg">JPEG Image</div>
             <div class="export-option" data-format="svg">SVG Vector</div>
             <div class="export-option" data-format="pdf">PDF Document</div>
-        </div>
-        <div class="action-button" id="saveToCloudBtn">
-            ☁️
-            <span class="tooltip">Save to Cloud</span>
         </div>
     </div>
     
@@ -488,6 +561,41 @@
         <div class="zoom-level" id="zoomLevelDisplay">100%</div>
         <div class="zoom-button" id="zoomInBtn">+</div>
         <div class="zoom-button" id="resetZoomBtn">↺</div>
+    </div>
+
+    <!-- Add drawing tools -->
+    <div class="drawing-tools">
+        <div class="drawing-tool" id="penTool" title="Draw">
+            ✏️
+            <span class="tooltip">Draw</span>
+        </div>
+        <div class="drawing-tool" id="eraserTool" title="Eraser">
+            🧽
+            <span class="tooltip">Eraser</span>
+        </div>
+        <div class="drawing-tool" id="clearDrawing" title="Clear All Drawing">
+            🗑️
+            <span class="tooltip">Clear Drawing</span>
+        </div>
+        <div class="drawing-tool" id="colorPickerTool" title="Change Color">
+            🎨
+            <span class="tooltip">Change Color</span>
+        </div>
+    </div>
+    
+    <!-- Drawing canvas -->
+    <canvas id="drawingCanvas"></canvas>
+    
+    <!-- Drawing color picker -->
+    <div class="draw-color-picker" id="drawColorPicker">
+        <div class="draw-color" style="background-color: #ffffff;" data-color="#ffffff"></div>
+        <div class="draw-color" style="background-color: #ff0000;" data-color="#ff0000"></div>
+        <div class="draw-color" style="background-color: #00ff00;" data-color="#00ff00"></div>
+        <div class="draw-color" style="background-color: #0000ff;" data-color="#0000ff"></div>
+        <div class="draw-color" style="background-color: #ffff00;" data-color="#ffff00"></div>
+        <div class="draw-color" style="background-color: #ff00ff;" data-color="#ff00ff"></div>
+        <div class="draw-color" style="background-color: #00ffff;" data-color="#00ffff"></div>
+        <div class="draw-color" style="background-color: #ff8000;" data-color="#ff8000"></div>
     </div>
 
     <script>
@@ -534,6 +642,108 @@
         const minZoom = 0.3;
         const maxZoom = 3;
         
+        // Drawing variables
+        let drawingMode = false;
+        let eraserMode = false;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let drawingColor = "#ffffff"; // Default white
+        let lineWidth = 3;
+        let eraserWidth = 20;
+        
+        // Connection variables
+        let connectingFrom = null;
+        
+        // History for undo/redo
+        const history = {
+            states: [],
+            currentIndex: -1,
+            maxStates: 50,
+            
+            saveState() {
+                const state = {
+                    nodes: JSON.parse(JSON.stringify(mindMap.nodes)),
+                    connections: JSON.parse(JSON.stringify(mindMap.connections)),
+                    images: JSON.parse(JSON.stringify(mindMap.images)),
+                    nextId: mindMap.nextId,
+                    nextImageId: mindMap.nextImageId,
+                    canvasOffsetX: canvasOffsetX,
+                    canvasOffsetY: canvasOffsetY,
+                    zoomLevel: zoomLevel,
+                    drawingCanvasData: getDrawingCanvasData()
+                };
+                
+                if (this.currentIndex < this.states.length - 1) {
+                    this.states = this.states.slice(0, this.currentIndex + 1);
+                }
+                
+                this.states.push(state);
+                this.currentIndex++;
+                
+                if (this.states.length > this.maxStates) {
+                    this.states.shift();
+                    this.currentIndex--;
+                }
+            },
+            
+            undo() {
+                if (this.currentIndex <= 0) return false;
+                
+                this.currentIndex--;
+                const prevState = this.states[this.currentIndex];
+                this.applyState(prevState);
+                return true;
+            },
+            
+            redo() {
+                if (this.currentIndex >= this.states.length - 1) return false;
+                
+                this.currentIndex++;
+                const nextState = this.states[this.currentIndex];
+                this.applyState(nextState);
+                return true;
+            },
+            
+            applyState(state) {
+                mindMap.nodes = state.nodes;
+                mindMap.connections = state.connections;
+                mindMap.images = state.images;
+                mindMap.nextId = state.nextId;
+                mindMap.nextImageId = state.nextImageId;
+                canvasOffsetX = state.canvasOffsetX;
+                canvasOffsetY = state.canvasOffsetY;
+                zoomLevel = state.zoomLevel;
+                restoreDrawingCanvasData(state.drawingCanvasData);
+                
+                updateCanvasTransform();
+                render();
+            }
+        };
+        
+        // Get drawing canvas data as base64 string
+        function getDrawingCanvasData() {
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            if (!drawingCanvas) return null;
+            return drawingCanvas.toDataURL();
+        }
+        
+        // Restore drawing canvas from data
+        function restoreDrawingCanvasData(data) {
+            if (!data) return;
+            
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            const ctx = drawingCanvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = data;
+        }
+        
         // Initialize the mind map
         function initializeMindMap() {
             // Create root node
@@ -548,8 +758,10 @@
             render();
         }
         
-        // Create a new node - updated to include collapsed state
+        // Create a new node
         function createNode(text, x, y, parentId, level) {
+            history.saveState();
+            
             const id = 'node-' + mindMap.nextId++;
             mindMap.nodes[id] = {
                 id,
@@ -577,6 +789,8 @@
         
         // Create a new image node
         function createImageNode(imageUrl, x, y) {
+            history.saveState();
+            
             const id = 'image-' + mindMap.nextImageId++;
             mindMap.images[id] = {
                 id,
@@ -588,7 +802,7 @@
             return id;
         }
         
-        // Render the mind map - updated to handle hidden nodes and images
+        // Render the mind map
         function render() {
             // Clear canvas
             canvas.innerHTML = '';
@@ -638,9 +852,12 @@
             canvas.addEventListener('mousedown', startCanvasDrag);
             document.addEventListener('mousemove', dragCanvas);
             document.addEventListener('mouseup', stopCanvasDrag);
+
+
+            
         }
         
-        // Render a node - updated to include collapse button
+        // Render a node
         function renderNode(node, container) {
             const nodeElement = document.createElement('div');
             nodeElement.id = node.id;
@@ -727,6 +944,8 @@
         
         // Toggle collapse state for a node
         function toggleCollapseNode(nodeId) {
+            history.saveState();
+            
             const node = mindMap.nodes[nodeId];
             if (!node) return;
             
@@ -813,47 +1032,80 @@
             document.addEventListener('mouseup', stopDrag);
         }
         
-        // Drag a node or image - updated for curved connections
-        function drag(e) {
-            if (!draggedNode) return;
-            
-            const x = (e.clientX - offsetX) / zoomLevel - canvasOffsetX / zoomLevel;
-            const y = (e.clientY - offsetY) / zoomLevel - canvasOffsetY / zoomLevel;
-            
-            draggedNode.style.left = `${x}px`;
-            draggedNode.style.top = `${y}px`;
-            
-            const nodeId = draggedNode.id;
-            
-            if (nodeId.startsWith('node-')) {
-                mindMap.nodes[nodeId].x = x;
-                mindMap.nodes[nodeId].y = y;
-            } else if (nodeId.startsWith('image-')) {
-                mindMap.images[nodeId].x = x;
-                mindMap.images[nodeId].y = y;
-            }
-            
-            // Update all connections by re-rendering
-            render();
+        // Drag a node or image
+// Add this code to improve dragging behavior
+function drag(e) {
+    if (!draggedNode) return;
+    
+    const x = (e.clientX - offsetX) / zoomLevel - canvasOffsetX / zoomLevel;
+    const y = (e.clientY - offsetY) / zoomLevel - canvasOffsetY / zoomLevel;
+    
+    draggedNode.style.left = `${x}px`;
+    draggedNode.style.top = `${y}px`;
+    
+    const nodeId = draggedNode.id;
+    
+    if (nodeId.startsWith('node-')) {
+        mindMap.nodes[nodeId].x = x;
+        mindMap.nodes[nodeId].y = y;
+    } else if (nodeId.startsWith('image-')) {
+        mindMap.images[nodeId].x = x;
+        mindMap.images[nodeId].y = y;
+    }
+    
+    // Instead of full render, just update the connections
+    updateConnectionsOnly();
+}
+
+// Add this new function to only update connections
+function updateConnectionsOnly() {
+    // Find the SVG container
+    const svgContainer = document.querySelector('.connection-container');
+    if (!svgContainer) return;
+    
+    // Clear existing connections
+    svgContainer.innerHTML = '';
+    
+    // Redraw connections
+    mindMap.connections.forEach(conn => {
+        const fromNode = mindMap.nodes[conn.from] || mindMap.images[conn.from];
+        const toNode = mindMap.nodes[conn.to] || mindMap.images[conn.to];
+        
+        if (fromNode && toNode && !toNode.hidden) {
+            renderConnection(svgContainer, conn.from, conn.to);
         }
+    });
+}
         
         // Stop dragging a node or image
         function stopDrag() {
+            if (draggedNode) {
+                history.saveState();
+            }
+            
             draggedNode = null;
             document.removeEventListener('mousemove', drag);
             document.removeEventListener('mouseup', stopDrag);
         }
         
-        // Start canvas dragging
-        function startCanvasDrag(e) {
-            // Only allow dragging when clicking directly on the canvas (not on nodes)
-            if (e.target === canvas || e.target.tagName === 'svg') {
-                canvasDragging = true;
-                canvasStartX = e.clientX - canvasOffsetX;
-                canvasStartY = e.clientY - canvasOffsetY;
-                canvas.classList.add('dragging');
-            }
-        }
+      // Start canvas dragging - enhanced to allow dragging from anywhere
+function startCanvasDrag(e) {
+    // Skip if a node is clicked or we're in drawing mode
+    if (e.target.closest('.node, .image-node') || drawingMode || eraserMode || 
+        e.target.closest('.context-menu') || e.target.closest('.input-dialog') ||
+        e.target.closest('.color-picker-dialog') || e.target.closest('.action-buttons') ||
+        e.target.closest('.drawing-tools') || e.target.closest('.zoom-controls') ||
+        e.target.closest('.add-root-button') || e.target.closest('.image-upload-button') ||
+        e.target.closest('.export-options') || e.target.closest('.draw-color-picker')) {
+        return;
+    }
+    
+    // Allow dragging from anywhere else
+    canvasDragging = true;
+    canvasStartX = e.clientX - canvasOffsetX;
+    canvasStartY = e.clientY - canvasOffsetY;
+    canvas.classList.add('dragging');
+}
         
         // Drag the canvas
         function dragCanvas(e) {
@@ -907,6 +1159,18 @@
         function showContextMenu(e) {
             e.preventDefault();
             contextNode = e.currentTarget.id;
+            
+            // Determine if it's a regular node or image node
+            const isImageNode = contextNode.startsWith('image-');
+            
+            // Show/hide appropriate menu items based on node type
+            document.getElementById('addChildNode').style.display = isImageNode ? 'none' : 'block';
+            document.getElementById('editNode').style.display = isImageNode ? 'none' : 'block';
+            document.getElementById('changeNodeColor').style.display = isImageNode ? 'none' : 'block';
+            document.getElementById('deleteAllChildren').style.display = isImageNode ? 'none' : 'block';
+            document.getElementById('connectToNodeBtn').style.display = 'block'; // Both can connect
+            document.getElementById('toggleCollapseNode').style.display = isImageNode ? 'none' : 'block';
+            document.getElementById('deleteNode').textContent = isImageNode ? 'Delete Image' : 'Delete Node';
             
             contextMenu.style.display = 'block';
             contextMenu.style.left = `${e.clientX}px`;
@@ -968,15 +1232,36 @@
                 
                 createNode(text, x, y, editingNode, level);
             } else {
+                history.saveState();
                 mindMap.nodes[editingNode].text = text;
             }
             
             hideInputDialog();
-            render();
+            render()// Add event listeners for panning
+document.addEventListener('mousedown', startCanvasDrag);
+document.addEventListener('mousemove', dragCanvas);
+document.addEventListener('mouseup', stopCanvasDrag);;
         }
         
-        // Delete node - updated to handle collapsed state
+        
+        
+        // Delete node
         function deleteNode(nodeId) {
+            history.saveState();
+            
+            // Check if it's an image node
+            if (nodeId.startsWith('image-')) {
+                // Remove connections related to this image
+                mindMap.connections = mindMap.connections.filter(
+                    conn => conn.from !== nodeId && conn.to !== nodeId
+                );
+                
+                // Delete image
+                delete mindMap.images[nodeId];
+                render();
+                return;
+            }
+            
             const node = mindMap.nodes[nodeId];
             if (!node) return;
             
@@ -1012,6 +1297,8 @@
         
         // Delete all children of a node
         function deleteAllChildren(nodeId) {
+            history.saveState();
+            
             const node = mindMap.nodes[nodeId];
             if (!node) return;
             
@@ -1043,6 +1330,8 @@
         
         // Set node color
         function setNodeColor(color) {
+            history.saveState();
+            
             if (!coloringNode) return;
             
             const node = mindMap.nodes[coloringNode];
@@ -1054,7 +1343,38 @@
             render();
         }
         
-        // Download mind map as JSON - updated to include images
+        // Add connection between nodes/images
+        function addConnection(fromId, toId) {
+            history.saveState();
+            
+            // Check if connection already exists
+            const connectionExists = mindMap.connections.some(
+                conn => (conn.from === fromId && conn.to === toId) || 
+                        (conn.from === toId && conn.to === fromId)
+            );
+            
+            if (!connectionExists) {
+                mindMap.connections.push({
+                    from: fromId,
+                    to: toId
+                });
+                
+                render();
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // Add a new root node
+        function addRootNode() {
+            editingNode = null;
+            isAddingChild = false;
+            showInputDialog(null);
+        }
+        
+        
+        // Download mind map as JSON
         function downloadMindMapJson() {
             const dataToExport = {
                 nodes: mindMap.nodes,
@@ -1073,7 +1393,7 @@
             downloadAnchorNode.remove();
         }
         
-        // Import JSON file - updated to handle images
+        // Import JSON file
         function importMindMapJson(file) {
             if (!file) return;
             
@@ -1256,231 +1576,6 @@
             pdf.save('mindmap.pdf');
         }
         
-        // Initialize Supabase client correctly
-        const SUPABASE_URL = 'https://xhyynqxnfetdiuppfptn.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoeXlucXhuZmV0ZGl1cHBmcHRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMwMTU5MjUsImV4cCI6MjA1ODU5MTkyNX0.baxMpbJJ9VIvUyfg27nZIfCsvwXgDagUF-aQ53LTW9Q';
-        
-        // Function to save mind map to Supabase - Ensure data matches table schema
-       // Function to save mind map to Supabase
-async function saveMindMapToSupabase() {
-    try {
-        // Generate a proper UUID for the session
-        const sessionId = crypto.randomUUID();
-        
-        const dataToInsert = [];
-        
-        // Add nodes
-        Object.values(mindMap.nodes).forEach(node => {
-            dataToInsert.push({
-                session_id: sessionId,
-                node_id: node.id,
-                text: node.text,
-                x: node.x,
-                y: node.y,
-                level: node.level,
-                parent_id: node.parentId,
-                color: node.color || null,
-                collapsed: node.collapsed || false,
-                is_connection: false,
-                from_node_id: null,
-                to_node_id: null,
-                is_image: false,
-                image_src: null
-            });
-        });
-        
-        // Add connections
-        mindMap.connections.forEach(conn => {
-            dataToInsert.push({
-                session_id: sessionId,
-                node_id: null,
-                text: null,
-                x: null,
-                y: null,
-                level: null,
-                parent_id: null,
-                color: null,
-                collapsed: false,
-                is_connection: true,
-                from_node_id: conn.from,
-                to_node_id: conn.to,
-                is_image: false,
-                image_src: null
-            });
-        });
-        
-        // Add images
-        Object.values(mindMap.images).forEach(image => {
-            dataToInsert.push({
-                session_id: sessionId,
-                node_id: image.id,
-                text: null,
-                x: image.x,
-                y: image.y,
-                level: null,
-                parent_id: null,
-                color: null,
-                collapsed: false,
-                is_connection: false,
-                from_node_id: null,
-                to_node_id: null,
-                is_image: true,
-                image_src: image.src
-            });
-        });
-        
-        // Send data to Supabase
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/mind_maps`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify(dataToInsert)
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Error: ${response.status} - ${errorText}`);
-        }
-        
-        // Store session ID in localStorage
-        localStorage.setItem('mindMapSessionId', sessionId);
-        
-        return sessionId;
-    } catch (error) {
-        console.error('Failed to save mind map:', error);
-        throw error;
-    }
-}
-                // Function to load a mind map from Supabase
-async function loadMindMapFromSession(sessionId) {
-    try {
-        // Show loading indicator
-        showToast('Loading mind map...');
-        
-        // Clear current mind map
-        mindMap.nodes = {};
-        mindMap.connections = [];
-        mindMap.images = {};
-        mindMap.nextId = 0;
-        mindMap.nextImageId = 0;
-        
-        // Fetch the data from Supabase
-        const response = await fetch(
-            `${SUPABASE_URL}/rest/v1/mind_maps?session_id=eq.${sessionId}`,
-            {
-                headers: {
-                    'apikey': SUPABASE_ANON_KEY,
-                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                }
-            }
-        );
-        
-        if (!response.ok) {
-            throw new Error(`Error ${response.status}: ${await response.text()}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.length === 0) {
-            throw new Error('No mind map found with this session ID');
-        }
-        
-        // Process nodes
-        data.filter(item => !item.is_connection && !item.is_image).forEach(item => {
-            // Track highest node ID to set nextId properly
-            const nodeIdNum = parseInt(item.node_id.split('-')[1]);
-            mindMap.nextId = Math.max(mindMap.nextId, nodeIdNum + 1);
-            
-            // Create node
-            mindMap.nodes[item.node_id] = {
-                id: item.node_id,
-                text: item.text,
-                x: item.x,
-                y: item.y,
-                level: item.level,
-                parentId: item.parent_id,
-                color: item.color,
-                collapsed: item.collapsed || false,
-                hidden: false,
-                children: []
-            };
-        });
-        
-        // Process connections
-        data.filter(item => item.is_connection).forEach(item => {
-            // Add to connections array
-            mindMap.connections.push({
-                from: item.from_node_id,
-                to: item.to_node_id
-            });
-            
-            // Update parent-child relationship if this is a parent-child connection
-            const toNode = mindMap.nodes[item.to_node_id];
-            const fromNode = mindMap.nodes[item.from_node_id];
-            
-            if (toNode && fromNode && toNode.parentId === item.from_node_id) {
-                if (!fromNode.children.includes(item.to_node_id)) {
-                    fromNode.children.push(item.to_node_id);
-                }
-            }
-        });
-        
-        // Process images
-        data.filter(item => item.is_image).forEach(item => {
-            // Track highest image ID
-            const imageIdNum = parseInt(item.node_id.split('-')[1]);
-            mindMap.nextImageId = Math.max(mindMap.nextImageId, imageIdNum + 1);
-            
-            // Create image
-            mindMap.images[item.node_id] = {
-                id: item.node_id,
-                src: item.image_src,
-                x: item.x,
-                y: item.y
-            };
-        });
-        
-        // Update hidden states based on collapsed nodes
-        Object.values(mindMap.nodes).forEach(node => {
-            if (node.collapsed) {
-                updateDescendantVisibility(node.id, true);
-            }
-        });
-        
-        // Save the session ID for future use
-        localStorage.setItem('mindMapSessionId', sessionId);
-        
-        // Render the map with proper positioning
-        render();
-        
-        showToast('Mind map loaded successfully!');
-        return true;
-    } catch (error) {
-        console.error('Failed to load mind map:', error);
-        showToast('Error: ' + error.message);
-        return false;
-    }
-}
-
-// Helper function to update visibility of descendants
-function updateDescendantVisibility(nodeId, isHidden) {
-    const node = mindMap.nodes[nodeId];
-    if (!node) return;
-    
-    node.children.forEach(childId => {
-        const child = mindMap.nodes[childId];
-        if (child) {
-            child.hidden = isHidden;
-            // Recursively update descendants
-            updateDescendantVisibility(childId, isHidden || child.collapsed);
-        }
-    });
-}
-        
         // Function to show toast notification
         function showToast(message, duration = 3000) {
             const toast = document.getElementById('toastNotification');
@@ -1491,31 +1586,6 @@ function updateDescendantVisibility(nodeId, isHidden) {
                 toast.classList.remove('show');
             }, duration);
         }
-        
-       // Handle save to cloud with better error handling
-async function handleSaveToCloud() {
-    try {
-        // Show saving indicator
-        showToast('Saving to cloud...');
-        
-        const sessionId = await saveMindMapToSupabase();
-        
-        // Copy session ID to clipboard and show success message
-        if (navigator.clipboard) {
-            try {
-                await navigator.clipboard.writeText(sessionId);
-                showToast('Saved! Session ID copied to clipboard: ' + sessionId);
-            } catch (clipboardError) {
-                showToast('Saved! Your session ID: ' + sessionId);
-            }
-        } else {
-            showToast('Saved! Your session ID: ' + sessionId);
-        }
-    } catch (error) {
-        console.error("Error in handleSaveToCloud:", error);
-        showToast('Failed to save: ' + error.message);
-    }
-}
         
         // Handle image upload
         function handleImageUpload(file) {
@@ -1539,62 +1609,6 @@ async function handleSaveToCloud() {
             reader.readAsDataURL(file);
         }
         
-        // Add connection between nodes/images
-        function addConnection(fromId, toId) {
-            // Check if connection already exists
-            const connectionExists = mindMap.connections.some(
-                conn => (conn.from === fromId && conn.to === toId) || 
-                        (conn.from === toId && conn.to === fromId)
-            );
-            
-            if (!connectionExists) {
-                mindMap.connections.push({
-                    from: fromId,
-                    to: toId
-                });
-                
-                render();
-                return true;
-            }
-            
-            return false;
-        }
-        
-        // Add context menu items for connecting nodes
-        document.getElementById('contextMenu').insertAdjacentHTML(
-            'beforeend', 
-            '<div class="context-menu-item" id="connectToNodeBtn">Connect to Node</div>'
-        );
-        
-        // Create a connection from the currently selected node to another
-        let connectingFrom = null; // Store the node id we're connecting from
-        
-        document.getElementById('connectToNodeBtn').addEventListener('click', () => {
-            if (contextNode) {
-                connectingFrom = contextNode;
-                showToast('Click on another node or image to create a connection');
-                
-                // Add one-time click handler for the next node clicked
-                const connectHandler = function(e) {
-                    const clickedElement = e.target.closest('.node, .image-node');
-                    if (clickedElement && clickedElement.id !== connectingFrom) {
-                        // Create connection
-                        if (addConnection(connectingFrom, clickedElement.id)) {
-                            showToast('Connection created!');
-                        } else {
-                            showToast('Connection already exists');
-                        }
-                        
-                        // Reset connecting state
-                        connectingFrom = null;
-                        document.removeEventListener('click', connectHandler);
-                    }
-                };
-                
-                document.addEventListener('click', connectHandler);
-            }
-        });
-        
         // Handle export based on format
         function handleExport(format) {
             if (format === 'json') {
@@ -1607,113 +1621,24 @@ async function handleSaveToCloud() {
             document.getElementById('exportOptions').classList.remove('show');
         }
         
-        // Initialize
-        function initializeApp() {
-            initializeMindMap();
-            
-            // Add html2canvas script for image export
-            const html2canvasScript = document.createElement('script');
-            html2canvasScript.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
-            document.head.appendChild(html2canvasScript);
-            
-            // Add zoom control event listeners
-            document.getElementById('zoomInBtn').addEventListener('click', zoomIn);
-            document.getElementById('zoomOutBtn').addEventListener('click', zoomOut);
-            document.getElementById('resetZoomBtn').addEventListener('click', resetZoom);
-            
-            // Add wheel zoom support
-            canvas.addEventListener('wheel', function(e) {
-                e.preventDefault();
+        // Save to local storage
+        function saveToLocalStorage() {
+            try {
+                const dataToSave = {
+                    nodes: mindMap.nodes,
+                    connections: mindMap.connections,
+                    images: mindMap.images,
+                    nextId: mindMap.nextId,
+                    nextImageId: mindMap.nextImageId
+                };
                 
-                if (e.deltaY < 0) {
-                    zoomIn();
-                } else {
-                    zoomOut();
-                }
-            });
+                localStorage.setItem('savedMindMap', JSON.stringify(dataToSave));
+                showToast('Mind map saved to local storage');
+            } catch (error) {
+                console.error('Failed to save mind map to local storage:', error);
+                showToast('Failed to save to local storage');
+            }
         }
-        
-        // Event listeners
-        document.getElementById('addChildNode').addEventListener('click', () => {
-            if (contextNode) {
-                showInputDialog(contextNode, true);
-            }
-        });
-        
-        document.getElementById('editNode').addEventListener('click', () => {
-            if (contextNode) {
-                showInputDialog(contextNode, false);
-            }
-        });
-        
-        document.getElementById('changeNodeColor').addEventListener('click', () => {
-            if (contextNode) {
-                showColorPicker(contextNode);
-            }
-        });
-        
-        document.getElementById('deleteAllChildren').addEventListener('click', () => {
-            if (contextNode) {
-                deleteAllChildren(contextNode);
-            }
-        });
-        
-        document.getElementById('deleteNode').addEventListener('click', () => {
-            if (contextNode) {
-                deleteNode(contextNode);
-            }
-        });
-        
-        document.getElementById('saveNodeBtn').addEventListener('click', saveNode);
-        document.getElementById('cancelNodeBtn').addEventListener('click', hideInputDialog);
-        document.getElementById('addRootBtn').addEventListener('click', addRootNode);
-        document.getElementById('cancelColorBtn').addEventListener('click', hideColorPicker);
-        document.getElementById('saveToCloudBtn').addEventListener('click', handleSaveToCloud);
-        
-        // Add color picker events
-        document.querySelectorAll('.color-option').forEach(option => {
-            option.addEventListener('click', () => {
-                setNodeColor(option.getAttribute('data-color'));
-            });
-        });
-        
-        // Add context menu item for collapsing/expanding
-        document.getElementById('contextMenu').insertAdjacentHTML(
-            'beforeend', 
-            '<div class="context-menu-item" id="toggleCollapseNode">Toggle Collapse</div>'
-        );
-        
-        document.getElementById('toggleCollapseNode').addEventListener('click', () => {
-            if (contextNode) {
-                toggleCollapseNode(contextNode);
-            }
-        });
-        
-        // Event listeners for new features
-        document.getElementById('importJsonBtn').addEventListener('click', function() {
-            document.getElementById('importJsonInput').click();
-        });
-        
-        document.getElementById('importJsonInput').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                importMindMapJson(e.target.files[0]);
-                // Reset the file input so the same file can be imported again if needed
-                e.target.value = '';
-            }
-        });
-        
-        // Update export button to use click instead of hover
-        document.getElementById('exportBtn').addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent immediate closing of menu
-            toggleExportOptions();
-        });
-        
-        document.querySelectorAll('.export-option').forEach(option => {
-            option.addEventListener('click', (e) => {
-                const format = e.target.getAttribute('data-format');
-                handleExport(format);
-            });
-        });
         
         // Toggle export options menu
         function toggleExportOptions() {
@@ -1739,92 +1664,643 @@ async function handleSaveToCloud() {
             }
         }
         
-        // Function to add a new root node
-        function addRootNode() {
-            editingNode = null;
-            isAddingChild = false;
-            showInputDialog(null);
+        // Initialize the drawing canvas
+        function initDrawingCanvas() {
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            if (!drawingCanvas) return;
+            
+            // Make sure canvas has correct size
+            drawingCanvas.width = window.innerWidth;
+            drawingCanvas.height = window.innerHeight;
+            
+            // Fix position and style
+            updateDrawingCanvasPosition();
+            
+            // Add resize listener
+            window.addEventListener('resize', function() {
+                const drawingCanvas = document.getElementById('drawingCanvas');
+                if (drawingCanvas) {
+                    drawingCanvas.width = window.innerWidth;
+                    drawingCanvas.height = window.innerHeight;
+                }
+            });
         }
         
-        // Show session dialog
-        function showSessionDialog() {
-            const sessionDialog = document.getElementById('sessionDialog');
-            sessionDialog.style.display = 'block';
+        // Update drawing canvas position
+        function updateDrawingCanvasPosition() {
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            if (!drawingCanvas) return;
             
-            // Pre-fill with last used session ID if available
-            const savedSessionId = localStorage.getItem('mindMapSessionId');
-            if (savedSessionId) {
-                document.getElementById('sessionIdInput').value = savedSessionId;
+            // Make sure canvas covers the entire viewport
+            drawingCanvas.width = window.innerWidth;
+            drawingCanvas.height = window.innerHeight;
+            
+            // Keep the canvas fixed in position
+            drawingCanvas.style.position = 'fixed';
+            drawingCanvas.style.top = '0';
+            drawingCanvas.style.left = '0';
+            drawingCanvas.style.width = '100%';
+            drawingCanvas.style.height = '100%';
+            
+            // Only capture mouse events when drawing tools are active
+            drawingCanvas.style.pointerEvents = (drawingMode || eraserMode) ? 'auto' : 'none';
+            drawingCanvas.style.zIndex = '50';
+        }
+        
+        // Toggle drawing mode
+        function togglePenTool() {
+            // Toggle drawing mode - if it's already active, turn it off
+            drawingMode = !drawingMode;
+            
+            // If we're activating pen tool, make sure eraser is off
+            if (drawingMode) {
+                eraserMode = false;
             }
             
-            document.getElementById('sessionIdInput').focus();
-        }
-
-        // Hide session dialog
-        function hideSessionDialog() {
-            document.getElementById('sessionDialog').style.display = 'none';
-        }
-
-        // Handle loading from session ID
-        async function handleLoadSession() {
-            const sessionId = document.getElementById('sessionIdInput').value.trim();
+            // Update UI to reflect current state
+            updateDrawingToolButtons();
+            updateDrawingCanvasPosition();
             
-            if (!sessionId) {
-                showToast('Please enter a valid session ID');
-                return;
+            // Show feedback to user
+            showToast(drawingMode ? 'Pen tool activated' : 'Pen tool deactivated');
+        }
+        
+        // Toggle eraser mode
+        function toggleEraserTool() {
+            // Toggle eraser mode - if it's already active, turn it off
+            eraserMode = !eraserMode;
+            
+            // If we're activating eraser, make sure pen is off
+            if (eraserMode) {
+                drawingMode = false;
             }
             
-            hideSessionDialog();
-            await loadMindMapFromSession(sessionId);
+            // Update UI to reflect current state
+            updateDrawingToolButtons();
+            updateDrawingCanvasPosition();
+            
+            // Show feedback to user
+            showToast(eraserMode ? 'Eraser tool activated' : 'Eraser tool deactivated');
         }
         
-        // Update event listeners
-        document.getElementById('imageUploadBtn').addEventListener('click', function() {
-            document.getElementById('imageUploadInput').click();
-        });
+        // Update drawing tool buttons
+        function updateDrawingToolButtons() {
+            document.getElementById('penTool').classList.toggle('active', drawingMode);
+            document.getElementById('eraserTool').classList.toggle('active', eraserMode);
+        }
         
-        document.getElementById('imageUploadInput').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                handleImageUpload(e.target.files[0]);
-                // Reset the input so the same file can be uploaded again
-                e.target.value = '';
+        // Start drawing
+        function startDrawing(e) {
+            if (!drawingMode && !eraserMode) return;
+            
+            e.preventDefault();
+            isDrawing = true;
+            
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            if (!drawingCanvas) return;
+            
+            const context = drawingCanvas.getContext('2d');
+            const rect = drawingCanvas.getBoundingClientRect();
+            
+            // Calculate position
+            lastX = e.clientX - rect.left;
+            lastY = e.clientY - rect.top;
+        }
+        
+        // Draw on canvas
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            e.preventDefault();
+            
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            if (!drawingCanvas) return;
+            
+            const context = drawingCanvas.getContext('2d');
+            const rect = drawingCanvas.getBoundingClientRect();
+            
+            // Calculate position
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+            
+            context.beginPath();
+            context.moveTo(lastX, lastY);
+            context.lineTo(currentX, currentY);
+            
+            if (eraserMode) {
+                context.strokeStyle = "rgba(0,0,0,1)";
+                context.lineWidth = eraserWidth;
+                context.globalCompositeOperation = 'destination-out';
+            } else {
+                context.strokeStyle = drawingColor;
+                context.lineWidth = lineWidth;
+                context.globalCompositeOperation = 'source-over';
             }
-        });
+            
+            context.lineCap = "round";
+            context.stroke();
+            
+            lastX = currentX;
+            lastY = currentY;
+        }
         
-        // Add session dialog event listeners
-        document.getElementById('loadSessionBtn').addEventListener('click', showSessionDialog);
-        document.getElementById('cancelSessionBtn').addEventListener('click', hideSessionDialog);
-        document.getElementById('sessionDialog').querySelector('#loadSessionBtn').addEventListener('click', handleLoadSession);
+        // Stop drawing
+        function stopDrawing() {
+            if (isDrawing) {
+                history.saveState();
+            }
+            isDrawing = false;
+        }
         
-        // Check for a previous session on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedSessionId = localStorage.getItem('mindMapSessionId');
-            if (savedSessionId) {
-                const shouldLoad = confirm('A saved mind map session was found. Would you like to load it?');
-                if (shouldLoad) {
-                    loadMindMapFromSession(savedSessionId);
+        // Clear the drawing canvas
+        function clearDrawingCanvas() {
+            history.saveState();
+            
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            const context = drawingCanvas.getContext('2d');
+            context.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        }
+        
+        // Toggle color picker
+        function toggleColorPicker() {
+            const colorPicker = document.getElementById('drawColorPicker');
+            const isVisible = colorPicker.style.display === 'flex';
+            
+            // Toggle visibility
+            colorPicker.style.display = isVisible ? 'none' : 'flex';
+            
+            // Position the color picker better
+            if (!isVisible) {
+                // Position near the color tool button
+                const colorTool = document.getElementById('colorPickerTool');
+                if (colorTool) {
+                    const rect = colorTool.getBoundingClientRect();
+                    colorPicker.style.top = (rect.bottom + 10) + 'px';
+                    colorPicker.style.left = rect.left + 'px';
                 }
             }
-        });
+        }
         
-        initializeApp();
-    </script>
+        // Change drawing color
+        function changeDrawingColor(color) {
+            drawingColor = color;
+            showToast('Drawing color changed to ' + color);
+            toggleColorPicker(); // Hide color picker after selection
+        }
+        
+        // Handle touch events for drawing
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            startDrawing(mouseEvent);
+        }
+        
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+            
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            draw(mouseEvent);
+        }
+        
+        // Initialize the app
+        function initializeApp() {
+            initializeMindMap();
+            initDrawingCanvas();
+            
+            // Add html2canvas script for image export
+            const html2canvasScript = document.createElement('script');
+            html2canvasScript.src = 'https://html2canvas.hertzen.com/dist/html2canvas.min.js';
+            document.head.appendChild(html2canvasScript);
+            
+            // Event Listeners
+            // Button actions
+            document.getElementById('addChildNode').addEventListener('click', () => {
+                if (contextNode) {
+                    showInputDialog(contextNode, true);
+                }
+            });
+            
+            document.getElementById('editNode').addEventListener('click', () => {
+                if (contextNode) {
+                    showInputDialog(contextNode, false);
+                }
+            });
+            
+            document.getElementById('changeNodeColor').addEventListener('click', () => {
+                if (contextNode) {
+                    showColorPicker(contextNode);
+                }
+            });
+            
+            document.getElementById('deleteAllChildren').addEventListener('click', () => {
+                if (contextNode) {
+                    deleteAllChildren(contextNode);
+                }
+            });
+            
+            document.getElementById('deleteNode').addEventListener('click', () => {
+                if (contextNode) {
+                    deleteNode(contextNode);
+                }
+            });
+            
+            document.getElementById('saveNodeBtn').addEventListener('click', saveNode);
+            document.getElementById('cancelNodeBtn').addEventListener('click', hideInputDialog);
+            document.getElementById('addRootBtn').addEventListener('click', addRootNode);
+            document.getElementById('cancelColorBtn').addEventListener('click', hideColorPicker);
+            // Add event listener for Enter key on the input field
+document.getElementById('nodeNameInput').addEventListener('keydown', function(e) {
+    // Check if the key pressed is Enter
+    if (e.key === 'Enter' || e.keyCode === 13) {
+        e.preventDefault(); // Prevent default Enter behavior
+        saveNode(); // Call the same function as the save button
+    }
+});
+            // Connect nodes
+            document.getElementById('connectToNodeBtn').addEventListener('click', () => {
+                if (contextNode) {
+                    connectingFrom = contextNode;
+                    showToast('Click on another node or image to create a connection');
+                    
+                    // Add one-time click handler for the next node clicked
+                    const connectHandler = function(e) {
+                        const clickedElement = e.target.closest('.node, .image-node');
+                        if (clickedElement && clickedElement.id !== connectingFrom) {
+                            // Create connection
+                            if (addConnection(connectingFrom, clickedElement.id)) {
+                                showToast('Connection created!');
+                            } else {
+                                showToast('Connection already exists');
+                            }
+                            
+                            // Reset connecting state
+                            connectingFrom = null;
+                            document.removeEventListener('click', connectHandler);
+                        }
+                    };
+                    
+                    document.addEventListener('click', connectHandler);
+                }
+            });
+            
+            // Color picker events
+            document.querySelectorAll('.color-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    setNodeColor(option.getAttribute('data-color'));
+                });
+            });
+            
+            // Toggle collapse node
+            document.getElementById('toggleCollapseNode').addEventListener('click', () => {
+                if (contextNode) {
+                    toggleCollapseNode(contextNode);
+                }
+            });
+            
+            // File import/export
+            document.getElementById('importJsonBtn').addEventListener('click', function() {
+                document.getElementById('importJsonInput').click();
+            });
+            
+            document.getElementById('importJsonInput').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    importMindMapJson(e.target.files[0]);
+                    // Reset the file input so the same file can be imported again if needed
+                    e.target.value = '';
+                }
+            });
+            
+            document.getElementById('exportBtn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleExportOptions();
+            });
+            
+            document.querySelectorAll('.export-option').forEach(option => {
+                option.addEventListener('click', (e) => {
+                    const format = e.target.getAttribute('data-format');
+                    handleExport(format);
+                });
+            });
+            
+            // Local storage save
+            document.getElementById('saveLocalBtn').addEventListener('click', saveToLocalStorage);
+            
+            // Image upload
+            document.getElementById('imageUploadBtn').addEventListener('click', function() {
+                document.getElementById('imageUploadInput').click();
+            });
+            
+            document.getElementById('imageUploadInput').addEventListener('change', function(event) {
+                if (event.target.files.length > 0) {
+                    history.saveState();
+                    handleImageUpload(event.target.files[0]);
+                    // Reset the file input
+                    event.target.value = '';
+                }
+            });
+            
+            // Zoom controls
+            document.getElementById('zoomInBtn').addEventListener('click', function() {
+                history.saveState();
+                zoomIn();
+            });
+            
+            document.getElementById('zoomOutBtn').addEventListener('click', function() {
+                history.saveState();
+                zoomOut();
+            });
+            
+            document.getElementById('resetZoomBtn').addEventListener('click', function() {
+                history.saveState();
+                resetZoom();
+            });
+            
+            // Wheel zoom
+            canvas.addEventListener('wheel', function(e) {
+                e.preventDefault();
+                
+                history.saveState();
+                if (e.deltaY < 0) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            });
+            
+            // Drawing tools
+            document.getElementById('penTool').addEventListener('click', function() {
+                history.saveState();
+                togglePenTool();
+            });
+            
+            document.getElementById('eraserTool').addEventListener('click', function() {
+                history.saveState();
+                toggleEraserTool();
+            });
+            
+            document.getElementById('clearDrawing').addEventListener('click', function() {
+                history.saveState();
+                clearDrawingCanvas();
+                showToast('Drawing cleared');
+            });
+            
+            document.getElementById('colorPickerTool').addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleColorPicker();
+            });
+            
+            // Drawing color selection
+            document.querySelectorAll('.draw-color').forEach(colorElement => {
+                colorElement.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const color = this.getAttribute('data-color');
+                    changeDrawingColor(color);
+                });
+            });
+            
+            // Drawing events
+            const drawingCanvas = document.getElementById('drawingCanvas');
+            drawingCanvas.addEventListener('mousedown', function(e) {
+                if (drawingMode || eraserMode) {
+                    startDrawing(e);
+                }
+            });
+            
+            drawingCanvas.addEventListener('mousemove', function(e) {
+                if (drawingMode || eraserMode) {
+                    draw(e);
+                }
+            });
+            
+            drawingCanvas.addEventListener('mouseup', function() {
+                stopDrawing();
+            });
+            
+            drawingCanvas.addEventListener('mouseout', function() {
+                stopDrawing();
+            });
+            
+            // Touch support
+            drawingCanvas.addEventListener('touchstart', function(e) {
+                if (drawingMode || eraserMode) {
+                    handleTouchStart(e);
+                }
+            });
+            
+            drawingCanvas.addEventListener('touchmove', function(e) {
+                if (drawingMode || eraserMode) {
+                    handleTouchMove(e);
+                }
+            });
+            
+            drawingCanvas.addEventListener('touchend', function() {
+                stopDrawing();
+            });
+            
+            // Close color picker when clicking outside
+            document.addEventListener('click', function(e) {
+                const colorPicker = document.getElementById('drawColorPicker');
+                const colorTool = document.getElementById('colorPickerTool');
+                
+                if (colorPicker && 
+                    colorPicker.style.display === 'flex' && 
+                    !colorPicker.contains(e.target) && 
+                    e.target !== colorTool) {
+                    colorPicker.style.display = 'none';
+                }
+            });
+            
+            // Keyboard shortcuts for undo/redo
+            document.addEventListener('keydown', function(e) {
+                // Check if user is not typing in an input
+                const activeElement = document.activeElement;
+                const isTyping = activeElement.tagName === 'INPUT' || 
+                                activeElement.tagName === 'TEXTAREA' || 
+                                activeElement.isContentEditable;
+                
+                if (isTyping) return;
+                
+                // Undo: Ctrl+Z
+                if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (history.undo()) {
+                        showToast('Undo');
+                    } else {
+                        showToast('Nothing to undo');
+                    }
+                }
+                
+                // Redo: Ctrl+Shift+Z or Ctrl+Y
+                if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || 
+                    (e.ctrlKey && e.key === 'y')) {
+                    e.preventDefault();
+                    if (history.redo()) {
+                        showToast('Redo');
+                    } else {
+                        showToast('Nothing to redo');
+                    }
+                }
+            });
+            
+            // Initialize history
+            setTimeout(() => {
+                history.saveState();
+                updateDrawingCanvasPosition();
+            }, 500);
+        }
+        
+        // Check for saved map when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedMapData = localStorage.getItem('savedMindMap');
+            if (savedMapData) {
+                try {
+                    const shouldLoad = confirm('A saved mind map was found in local storage. Would you like to load it?');
+                    if (shouldLoad) {
+                        const mapData = JSON.parse(savedMapData);
+                        mindMap.nodes = mapData.nodes || {};
+                        mindMap.connections = mapData.connections || [];
+                        mindMap.images = mapData.images || {};
+                        mindMap.nextId = mapData.nextId || 0;
+                        mindMap.nextImageId = mapData.nextImageId || 0;
+                        render();
+                        showToast('Mind map loaded from local storage');
+                    }
+                } catch (error) {
+                    console.error('Failed to load mind map from local storage:', error);
+                }
+            }
+            
+            // Initialize app
+            initializeApp();
+        });
 
 
-<!-- Session dialog -->
-<div class="input-dialog" id="sessionDialog">
-    <input type="text" id="sessionIdInput" placeholder="Enter session ID">
-    <button id="loadSessionBtn">Load</button>
-    <button id="cancelSessionBtn">Cancel</button>
-</div>
+        // ===== FIX FOR DRAWING PERSISTENCE =====
+// This code prevents drawings from disappearing when tools are deactivated
 
-<!-- Session controls -->
-<div class="session-controls">
-    <div class="action-button" id="loadSessionBtn">
-        📂
-        <span class="tooltip">Load Session</span>
-    </div>
-</div>
+// Override togglePenTool to preserve drawings
+function togglePenTool() {
+    // Toggle drawing mode - if it's already active, turn it off
+    drawingMode = !drawingMode;
     
+    // If we're activating pen tool, make sure eraser is off
+    if (drawingMode) {
+        eraserMode = false;
+    }
+    
+    // Update UI to reflect current state
+    updateDrawingToolButtons();
+    
+    // Make sure drawings stay visible but no longer interactive when tool is off
+    const drawingCanvas = document.getElementById('drawingCanvas');
+    if (drawingCanvas) {
+        drawingCanvas.style.pointerEvents = (drawingMode || eraserMode) ? 'auto' : 'none';
+    }
+    
+    // Show feedback to user
+    showToast(drawingMode ? 'Pen tool activated' : 'Pen tool deactivated');
+}
+
+// Override toggleEraserTool to preserve drawings
+function toggleEraserTool() {
+    // Toggle eraser mode - if it's already active, turn it off
+    eraserMode = !eraserMode;
+    
+    // If we're activating eraser, make sure pen is off
+    if (eraserMode) {
+        drawingMode = false;
+    }
+    
+    // Update UI to reflect current state
+    updateDrawingToolButtons();
+    
+    // Make sure drawings stay visible but no longer interactive when tool is off
+    const drawingCanvas = document.getElementById('drawingCanvas');
+    if (drawingCanvas) {
+        drawingCanvas.style.pointerEvents = (drawingMode || eraserMode) ? 'auto' : 'none';
+    }
+    
+    // Show feedback to user
+    showToast(eraserMode ? 'Eraser tool activated' : 'Eraser tool deactivated');
+}
+
+// Override initDrawingCanvas to not reset canvas on initialization
+function initDrawingCanvas() {
+    const drawingCanvas = document.getElementById('drawingCanvas');
+    if (!drawingCanvas) return;
+    
+    // Do NOT reset canvas size if it's already been drawn on
+    if (!drawingCanvas.hasAttribute('data-initialized')) {
+        drawingCanvas.width = window.innerWidth;
+        drawingCanvas.height = window.innerHeight;
+        drawingCanvas.setAttribute('data-initialized', 'true');
+    }
+    
+    // Keep the canvas fixed in position without clearing it
+    drawingCanvas.style.position = 'fixed';
+    drawingCanvas.style.top = '0';
+    drawingCanvas.style.left = '0';
+    drawingCanvas.style.width = '100%';
+    drawingCanvas.style.height = '100%';
+    drawingCanvas.style.pointerEvents = (drawingMode || eraserMode) ? 'auto' : 'none';
+    drawingCanvas.style.zIndex = '50';
+    
+    // Add resize listener that preserves content
+    window.addEventListener('resize', function() {
+        // Create a temporary canvas to hold the current drawing
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = drawingCanvas.width;
+        tempCanvas.height = drawingCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(drawingCanvas, 0, 0);
+        
+        // Resize the main canvas
+        drawingCanvas.width = window.innerWidth;
+        drawingCanvas.height = window.innerHeight;
+        
+        // Restore the drawing
+        const ctx = drawingCanvas.getContext('2d');
+        ctx.drawImage(tempCanvas, 0, 0);
+    });
+}
+
+// This function is now no longer needed as its functionality is integrated into togglePenTool and toggleEraserTool
+function updateDrawingCanvasPosition() {
+    const drawingCanvas = document.getElementById('drawingCanvas');
+    if (!drawingCanvas) return;
+    
+    drawingCanvas.style.pointerEvents = (drawingMode || eraserMode) ? 'auto' : 'none';
+}
+
+// Make sure we don't reset width/height when changing tools as this clears the canvas
+document.getElementById('penTool').addEventListener('click', function(e) {
+    e.stopPropagation();
+    history.saveState();
+    togglePenTool();
+}, true);
+
+
+
+document.getElementById('eraserTool').addEventListener('click', function(e) {
+    e.stopPropagation();
+    history.saveState();
+    toggleEraserTool();
+}, true);
+
+// Initialize but don't clear the drawing canvas
+initDrawingCanvas();
+
+// ===== END FIX =====
+
+    </script>
 </body>
 </html>
