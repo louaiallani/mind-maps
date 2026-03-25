@@ -53,18 +53,6 @@ python -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-## Project Structure
-
-```text
-.
-|-- index.html
-|-- README.md
-|-- LICENSE
-|-- CONTRIBUTING.md
-|-- SECURITY.md
-`-- .github/
-```
-
 ## Known Constraints
 
 - The app is intentionally single-file for portability.
