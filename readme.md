@@ -1,13 +1,13 @@
-# H3 - Interactive Mind Map
+# Mind-Maps - Interactive Mind Map
 
-H3 is a browser-based mind-mapping workspace built as a single-page app.
+Mind-Maps is a browser-based mind-mapping workspace built as a single-page app.
 It supports rapid ideation, visual structuring, and lightweight knowledge capture without any backend.
 
 In practical terms: this is a local-first thinking surface. You can map, connect, annotate, and export your work fast.
 
 ## Why This Project Exists
 
-Most note tools optimize for storage. H3 optimizes for cognition under time pressure:
+Most note tools optimize for storage. Mind-Maps optimizes for cognition under time pressure:
 - Build structure quickly
 - Reposition ideas fluidly
 - Preserve output in reusable formats
